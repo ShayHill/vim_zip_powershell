@@ -72,17 +72,25 @@ fun! s:Mess(group, msg)
   echohl Normal
 endfun
 
+fun! UnzipFound()
+  return executable(substitute(g:zip_unzipcmd,'\s\+.*$','',''))
+endfun
+
+fun! UnzipIsSafeExecutable()
+  return dist#vim#IsSafeExecutable('zip', substitute(g:zip_unzipcmd,'\s\+.*$','',''))
+endfun
+
 if v:version < 901
  " required for defer
  call s:Mess('WarningMsg', "***warning*** this version of zip needs vim 9.1 or later")
  finish
 endif
 " sanity checks
-if !executable(g:zip_unzipcmd)
+if !UnzipFound()
  call s:Mess('Error', "***error*** (zip#Browse) unzip not available on your system")
  finish
 endif
-if !dist#vim#IsSafeExecutable('zip', g:zip_unzipcmd)
+if !UnzipIsSafeExecutable()
  call s:Mess('Error', "Warning: NOT executing " .. g:zip_unzipcmd .. " from current directory!")
  finish
 endif
