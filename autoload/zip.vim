@@ -73,11 +73,17 @@ fun! s:Mess(group, msg)
 endfun
 
 fun! UnzipFound()
-  return executable(substitute(g:zip_unzipcmd,'\s\+.*$','',''))
+  if executable(substitute(g:zip_unzipcmd,'\s\+.*$','',''))
+    return 1
+  endif
+  return &shell == 'powershell' || &shell =~ 'pwsh'
 endfun
 
 fun! UnzipIsSafeExecutable()
-  return dist#vim#IsSafeExecutable('zip', substitute(g:zip_unzipcmd,'\s\+.*$','',''))
+  if dist#vim#IsSafeExecutable('zip', substitute(g:zip_unzipcmd,'\s\+.*$','',''))
+    return 1
+  endif
+  return &shell == 'powershell' || &shell =~ 'pwsh'
 endfun
 
 if v:version < 901
