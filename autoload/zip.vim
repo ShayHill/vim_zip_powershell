@@ -72,14 +72,17 @@ fun! s:Mess(group, msg)
   echohl Normal
 endfun
 
-let s:usePowershell = (&shell == 'powershell' || &shell =~ 'pwsh') && g:zip_unzipcmd == 'Expand-Archive'
+
+fun! UsePowerShell()
+  return &shell =~ 'pwsh' && g:zip_unzipcmd == 'Expand-Archive'
+endfun
 
 fun! UnzipFound()
-  return executable(substitute(g:zip_unzipcmd,'\s\+.*$','','')) || s:usePowershell
+  return executable(substitute(g:zip_unzipcmd,'\s\+.*$','','')) || UsePowerShell()
 endfun
 
 fun! UnzipIsSafeExecutable()
-  return dist#vim#IsSafeExecutable('zip', substitute(g:zip_unzipcmd,'\s\+.*$','','')) || s:usePowershell
+  return dist#vim#IsSafeExecutable('zip', substitute(g:zip_unzipcmd,'\s\+.*$','','')) || UsePowerShell()
 endfun
 
 if v:version < 901
@@ -150,7 +153,7 @@ fun! zip#Browse(zipfile)
  \                '" Select a file with cursor and press ENTER'])
   keepj $
 
-  if s:usePowershell
+  if UsePowerShell()
     exe 'keepj sil r! [System.IO.Compression.ZipFile]::OpenRead('
    \    . s:Escape(a:zipfile, 1)
    \    . ').Entries | ForEach-Object { $_.FullName }'
@@ -226,7 +229,7 @@ fun! zip#Read(fname,mode)
   endif
   let fname    = fname->substitute('[', '[[]', 'g')->escape('?*\\')
   " sanity check
-  if !executable(substitute(g:zip_unzipcmd,'\s\+.*$','',''))
+  if !UnzipFound()
    call s:Mess('Error', "***error*** (zip#Read) sorry, your system doesn't appear to have the ".g:zip_unzipcmd." program")
    return
   endif
@@ -236,7 +239,19 @@ fun! zip#Read(fname,mode)
   " but allows zipfile://... entries in quickfix lists
   let temp = tempname()
   let fn   = expand('%:p')
-  exe "sil !".g:zip_unzipcmd." -p -- ".s:Escape(zipfile,1)." ".s:Escape(fname,1).' > '.temp
+  if UsePowerShell()
+    let cmds = [
+   \  '$zip = [System.IO.Compression.ZipFile]::OpenRead(''' . s:Escape(zipfile,1) . ''');',
+   \  '$entry = $zip.Entries | Where-Object { $_.FullName -eq ''' . s:Escape(fname,1) . ''' };',
+   \  '$stream = $entry.Open();',
+   \  '$fs = [System.IO.File]::Create(''' . s:Escape(temp,1) . ''');',
+   \  '$stream.CopyTo($fs);',
+   \  '$fs.Close(); $stream.Close(); $zip.Dispose()'
+   \]
+    exe 'sil !pwsh -Command ''' . join(cmds, ' ') . ''''
+  else
+    exe "sil !".g:zip_unzipcmd." -p -- ".s:Escape(zipfile,1)." ".s:Escape(fname,1).' > '.temp
+  endif
   sil exe 'keepalt file '.temp
   sil keepj e!
   sil exe 'keepalt file '.fnameescape(fn)
