@@ -73,16 +73,16 @@ fun! s:Mess(group, msg)
 endfun
 
 
-fun! UsePowerShell()
+fun! UsePowerShellUnzip()
   return &shell =~ 'pwsh' && g:zip_unzipcmd == 'Expand-Archive'
 endfun
 
 fun! UnzipFound()
-  return executable(substitute(g:zip_unzipcmd,'\s\+.*$','','')) || UsePowerShell()
+  return executable(substitute(g:zip_unzipcmd,'\s\+.*$','','')) || UsePowerShellUnzip()
 endfun
 
 fun! UnzipIsSafeExecutable()
-  return dist#vim#IsSafeExecutable('zip', substitute(g:zip_unzipcmd,'\s\+.*$','','')) || UsePowerShell()
+  return dist#vim#IsSafeExecutable('zip', substitute(g:zip_unzipcmd,'\s\+.*$','','')) || UsePowerShellUnzip()
 endfun
 
 if v:version < 901
@@ -153,7 +153,7 @@ fun! zip#Browse(zipfile)
  \                '" Select a file with cursor and press ENTER'])
   keepj $
 
-  if UsePowerShell()
+  if UsePowerShellUnzip()
     exe 'keepj sil r! [System.IO.Compression.ZipFile]::OpenRead('
    \    . s:Escape(a:zipfile, 1)
    \    . ').Entries | ForEach-Object { $_.FullName }'
@@ -239,7 +239,7 @@ fun! zip#Read(fname,mode)
   " but allows zipfile://... entries in quickfix lists
   let temp = tempname()
   let fn   = expand('%:p')
-  if UsePowerShell()
+  if UsePowerShellUnzip()
     let cmds = [
    \  '$zip = [System.IO.Compression.ZipFile]::OpenRead(''' . s:Escape(zipfile,1) . ''');',
    \  '$entry = $zip.Entries | Where-Object { $_.FullName -eq ''' . s:Escape(fname,1) . ''' };',
