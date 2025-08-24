@@ -72,30 +72,17 @@ fun! s:Mess(group, msg)
   echohl Normal
 endfun
 
-
-fun! UsePowerShellUnzip()
-  return &shell =~ 'pwsh' && g:zip_unzipcmd == 'Expand-Archive'
-endfun
-
-fun! UnzipFound()
-  return executable(substitute(g:zip_unzipcmd,'\s\+.*$','','')) || UsePowerShellUnzip()
-endfun
-
-fun! UnzipIsSafeExecutable()
-  return dist#vim#IsSafeExecutable('zip', substitute(g:zip_unzipcmd,'\s\+.*$','','')) || UsePowerShellUnzip()
-endfun
-
 if v:version < 901
  " required for defer
  call s:Mess('WarningMsg', "***warning*** this version of zip needs vim 9.1 or later")
  finish
 endif
 " sanity checks
-if !UnzipFound()
+if !executable(g:zip_unzipcmd)
  call s:Mess('Error', "***error*** (zip#Browse) unzip not available on your system")
  finish
 endif
-if !UnzipIsSafeExecutable()
+if !dist#vim#IsSafeExecutable('zip', g:zip_unzipcmd)
  call s:Mess('Error', "Warning: NOT executing " .. g:zip_unzipcmd .. " from current directory!")
  finish
 endif
@@ -118,7 +105,7 @@ fun! zip#Browse(zipfile)
   defer s:RestoreOpts(dict)
 
   " sanity checks
-  if !UnzipFound()
+  if !executable(g:zip_unzipcmd)
    call s:Mess('Error', "***error*** (zip#Browse) unzip not available on your system")
    return
   endif
@@ -153,13 +140,7 @@ fun! zip#Browse(zipfile)
  \                '" Select a file with cursor and press ENTER'])
   keepj $
 
-  if UsePowerShellUnzip()
-    exe 'keepj sil r! [System.IO.Compression.ZipFile]::OpenRead('
-   \    . s:Escape(a:zipfile, 1)
-   \    . ').Entries | ForEach-Object { $_.FullName }'
-  else
-    exe $"keepj sil r! {g:zip_unzipcmd} -Z1 -- {s:Escape(a:zipfile, 1)}"
-  endif
+  exe $"keepj sil r! {g:zip_unzipcmd} -Z1 -- {s:Escape(a:zipfile, 1)}"
   if v:shell_error != 0
    call s:Mess('WarningMsg', "***warning*** (zip#Browse) ".fnameescape(a:zipfile)." is not a zip file")
    keepj sil! %d
@@ -229,7 +210,7 @@ fun! zip#Read(fname,mode)
   endif
   let fname    = fname->substitute('[', '[[]', 'g')->escape('?*\\')
   " sanity check
-  if !UnzipFound()
+  if !executable(substitute(g:zip_unzipcmd,'\s\+.*$','',''))
    call s:Mess('Error', "***error*** (zip#Read) sorry, your system doesn't appear to have the ".g:zip_unzipcmd." program")
    return
   endif
@@ -239,19 +220,7 @@ fun! zip#Read(fname,mode)
   " but allows zipfile://... entries in quickfix lists
   let temp = tempname()
   let fn   = expand('%:p')
-  if UsePowerShellUnzip()
-    let cmds = [
-   \  '$zip = [System.IO.Compression.ZipFile]::OpenRead(''' . s:Escape(zipfile,1) . ''');',
-   \  '$entry = $zip.Entries | Where-Object { $_.FullName -eq ''' . s:Escape(fname,1) . ''' };',
-   \  '$stream = $entry.Open();',
-   \  '$fs = [System.IO.File]::Create(''' . s:Escape(temp,1) . ''');',
-   \  '$stream.CopyTo($fs);',
-   \  '$fs.Close(); $stream.Close(); $zip.Dispose()'
-   \]
-    exe 'sil !pwsh -Command ''' . join(cmds, ' ') . ''''
-  else
-    exe "sil !".g:zip_unzipcmd." -p -- ".s:Escape(zipfile,1)." ".s:Escape(fname,1).' > '.temp
-  endif
+  exe "sil !".g:zip_unzipcmd." -p -- ".s:Escape(zipfile,1)." ".s:Escape(fname,1).' > '.temp
   sil exe 'keepalt file '.temp
   sil keepj e!
   sil exe 'keepalt file '.fnameescape(fn)
