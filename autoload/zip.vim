@@ -103,6 +103,19 @@ function! s:ZipBrowsePS(zipfile)
   return 'pwsh -Command ' . s:Escape(join(cmds, ' '), 1)
 endfunction
 
+function! s:ZipReadPS(zipfile, fname, tempfile)
+  " Read a filename within a zipped file to a temporary file.
+  " Equivalent to `unzip -p -- zipfile fname > tempfile`
+  let cmds = [
+        \ '$zip = [System.IO.Compression.ZipFile]::OpenRead(' . s:Escape(a:zipfile, 1) . ');',
+        \ '$entry = $zip.Entries | Where-Object { $_.FullName -eq ' . s:Escape(a:fname, 1) . ' };',
+        \ '$stream = $entry.Open();',
+        \ '$fs = [System.IO.File]::Create(' . s:Escape(a:tempfile, 1) . ');',
+        \ '$stream.CopyTo($fs);',
+        \ '$fs.Close(); $stream.Close(); $zip.Dispose()'
+        \ ]
+  return 'pwsh -Command ' . s:Escape(join(cmds, ' '), 1)
+endfunction
 
 " ----------------
 "  Functions: {{{1
@@ -233,7 +246,7 @@ fun! zip#Read(fname,mode)
   endif
   let fname    = fname->substitute('[', '[[]', 'g')->escape('?*\\')
   " sanity check
-  if !executable(substitute(g:zip_unzipcmd,'\s\+.*$','',''))
+  if !executable(substitute(g:zip_unzipcmd,'\s\+.*$','','')) && &shell !~ 'pwsh'
    call s:Mess('Error', "***error*** (zip#Read) sorry, your system doesn't appear to have the ".g:zip_unzipcmd." program")
    return
   endif
@@ -243,7 +256,14 @@ fun! zip#Read(fname,mode)
   " but allows zipfile://... entries in quickfix lists
   let temp = tempname()
   let fn   = expand('%:p')
-  exe "sil !".g:zip_unzipcmd." -p -- ".s:Escape(zipfile,1)." ".s:Escape(fname,1).' > '.temp
+
+  if &shell =~ 'pwsh'
+    let cmd = s:ZipReadPS(zipfile, fname, temp)
+  else
+    let cmd = g:zip_unzipcmd . " -p -- " . s:Escape(zipfile, 1) . " " . s:Escape(fname, 1) . ' > ' . s:Escape(temp, 1)
+  endif
+  exe "sil !" . cmd
+
   sil exe 'keepalt file '.temp
   sil keepj e!
   sil exe 'keepalt file '.fnameescape(fn)
