@@ -123,6 +123,43 @@ function! s:ZipUpdatePS(zipfile, fname)
   return 'Compress-Archive -Path ' . a:fname . ' -Update -DestinationPath ' . a:zipfile
 endfunction
 
+function! RemoveFileFromZip(zip_path, file_to_delete)
+  " Define PowerShell script as a list of strings
+  let ps_lines = [
+        \ 'powershell -Command "& {',
+        \ 'function Remove-FileFromZip {',
+        \ 'param ([string]$ZipPath, [string]$FileToDelete);',
+        \ 'if (-not (Test-Path $ZipPath)) { Write-Error \"Zip file ''$ZipPath'' not found.\"; exit 1 };',
+        \ '$tempDir = [System.IO.Path]::GetTempPath() + [System.Guid]::NewGuid().ToString();',
+        \ 'New-Item -ItemType Directory -Path $tempDir | Out-Null;',
+        \ 'try {',
+        \ 'Add-Type -AssemblyName System.IO.Compression.FileSystem;',
+        \ '[System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $tempDir);',
+        \ '$filePathInTemp = Join-Path $tempDir $FileToDelete;',
+        \ 'if (Test-Path $filePathInTemp) { Remove-Item $filePathInTemp -Force } else { Write-Warning \"File ''$FileToDelete'' not found in the zip archive.\"; exit 0 };',
+        \ '$newZipPath = $ZipPath + \".tmp\";',
+        \ '[System.IO.Compression.ZipFile]::CreateFromDirectory($tempDir, $newZipPath);',
+        \ 'Move-Item $newZipPath $ZipPath -Force;',
+        \ '} catch { Write-Error \"Error processing zip file: $_\"; exit 1 }',
+        \ 'finally { Remove-Item $tempDir -Recurse -Force };',
+        \ '};',
+        \ 'Remove-FileFromZip -ZipPath \"' . a:zip_path . '\" -FileToDelete \"' . a:file_to_delete . '\";',
+        \ '}"'
+        \ ]
+
+    " Join the lines into a single command
+    let ps_script = join(ps_lines, '')
+
+    " Execute the PowerShell command using system()
+    let output = system(ps_script)
+
+    " Display the output
+    echo output
+endfunction
+
+" Example usage:
+" :call RemoveFileFromZip('C:\path\to\archive.zip', 'file.txt')
+
 
 " ----------------
 "  Functions: {{{1
