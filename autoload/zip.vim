@@ -88,6 +88,23 @@ if !dist#vim#IsSafeExecutable('zip', g:zip_unzipcmd) && &shell !~ 'pwsh'
 endif
 
 " ----------------
+"  PowerShell: {{{1
+" ----------------
+
+function! s:ZipBrowsePS(zipfile)
+  " Browse the contents of a zip file using PowerShell's
+  " System.IO.Compression.ZipFile class.
+  " Equivalent `unzip -Z1 -- zipfile`
+  let cmds = [
+        \ '$zip = [System.IO.Compression.ZipFile]::OpenRead(' . s:Escape(a:zipfile, 1) . ');',
+        \ '$zip.Entries | ForEach-Object { $_.FullName };',
+        \ '$zip.Dispose()'
+        \ ]
+  return 'pwsh -Command ' . s:Escape(join(cmds, ' '), 1)
+endfunction
+
+
+" ----------------
 "  Functions: {{{1
 " ----------------
 
@@ -105,7 +122,7 @@ fun! zip#Browse(zipfile)
   defer s:RestoreOpts(dict)
 
   " sanity checks
-  if !executable(g:zip_unzipcmd)
+  if !executable(g:zip_unzipcmd) && &shell !~ 'pwsh'
    call s:Mess('Error', "***error*** (zip#Browse) unzip not available on your system")
    return
   endif
@@ -140,7 +157,13 @@ fun! zip#Browse(zipfile)
  \                '" Select a file with cursor and press ENTER'])
   keepj $
 
-  exe $"keepj sil r! {g:zip_unzipcmd} -Z1 -- {s:Escape(a:zipfile, 1)}"
+  if &shell =~ 'pwsh'
+    let cmd = s:ZipBrowsePS(a:zipfile)
+  else
+    let cmd = $"{g:zip_unzipcmd} -Z1 -- {s:Escape(a:zipfile, 1)}"
+  endif
+  exe "keepj sil r! " . cmd
+
   if v:shell_error != 0
    call s:Mess('WarningMsg', "***warning*** (zip#Browse) ".fnameescape(a:zipfile)." is not a zip file")
    keepj sil! %d
