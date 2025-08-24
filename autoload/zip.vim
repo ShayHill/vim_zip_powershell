@@ -117,6 +117,13 @@ function! s:ZipReadPS(zipfile, fname, tempfile)
   return 'pwsh -Command ' . s:Escape(join(cmds, ' '), 1)
 endfunction
 
+function! s:ZipUpdatePS(zipfile, fname)
+  " Read a filename within a zipped file to a temporary file.
+  " Equivalent to `zip -u zipfile fname`
+  return 'Compress-Archive -Path ' . a:fname . ' -Update -DestinationPath ' . a:zipfile
+endfunction
+
+
 " ----------------
 "  Functions: {{{1
 " ----------------
@@ -284,7 +291,7 @@ fun! zip#Write(fname)
   defer s:RestoreOpts(dict)
 
   " sanity checks
-  if !executable(substitute(g:zip_zipcmd,'\s\+.*$','',''))
+  if !executable(substitute(g:zip_zipcmd,'\s\+.*$','','')) && &shell !~ 'pwsh'
     call s:Mess('Error', "***error*** (zip#Write) sorry, your system doesn't appear to have the ".g:zip_zipcmd." program")
     return
   endif
@@ -342,7 +349,19 @@ fun! zip#Write(fname)
     let fname = substitute(fname, '[', '[[]', 'g')
   endif
 
-  call system(g:zip_zipcmd." -u ".s:Escape(fnamemodify(zipfile,":p"),0)." ".s:Escape(fname,0))
+  let cmd_zipfile = s:Escape(fnamemodify(zipfile, ":p"), 0)
+  let cmd_fname   = s:Escape(fname, 0)
+  if &shell =~ 'pwsh'
+    call system(s:ZipUpdatePS(cmd_zipfile, cmd_fname))
+    " Vim flashes 'creation in progress ...' from what I believe is the
+    " ProgressAction stream of PowerShell. Unfortunately, this cannot be
+    " suppressed (as of 250824) due to an open PowerShell issue.
+    " https://github.com/PowerShell/PowerShell/issues/21074
+    reload!
+  else
+    call system(g:zip_zipcmd." -u ".cmd_zipfile." ".cmd_fname)
+  endif
+
   if v:shell_error != 0
     call s:Mess('Error', "***error*** (zip#Write) sorry, unable to update ".zipfile." with ".fname)
 
