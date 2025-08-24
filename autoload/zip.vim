@@ -78,11 +78,11 @@ if v:version < 901
  finish
 endif
 " sanity checks
-if !executable(g:zip_unzipcmd)
+if !executable(g:zip_unzipcmd) && &shell !~ 'pwsh'
  call s:Mess('Error', "***error*** (zip#Browse) unzip not available on your system")
  finish
 endif
-if !dist#vim#IsSafeExecutable('zip', g:zip_unzipcmd)
+if !dist#vim#IsSafeExecutable('zip', g:zip_unzipcmd) && &shell !~ 'pwsh'
  call s:Mess('Error', "Warning: NOT executing " .. g:zip_unzipcmd .. " from current directory!")
  finish
 endif
