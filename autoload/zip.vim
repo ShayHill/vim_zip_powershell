@@ -91,6 +91,38 @@ endif
 "  PowerShell: {{{1
 " ----------------
 
+function! s:TryExecGnuFallBackToPs(executable, gnu_func_call, ...)
+  " Check that a gnu executable is available, run the gnu_func_call if so. If
+  " the gnu executable is not available or if gnu_func_call fails, try
+  " ps_func_call if &shell =~ 'pwsh'. If all attempts fail, print errors.
+  " a:executable - one of (g:zip_zipcmd, g:zip_unzipcmd)
+  " a:gnu_func_call - (string) a gnu function call to execute
+  " a:1 - (optional string) a PowerShell function call to execute.
+  let l:failures = []
+  if executable(substitute(a:executable,'\s\+.*$','',''))
+    try
+      exe a:gnu_func_call
+      return
+    catch
+      call add(l:failures, 'Failed to execute '.a:gnu_func_call)
+    endtry
+  else
+      call add(l:failures, a:executable.' not available on your system')
+  endif
+  if a:0 == 1
+    try
+      exe a:1
+      return
+    catch
+      call add(l:failures, 'Fallback to PowerShell attempted but failed')
+    endtry
+  endif
+  for msg in l:failures
+    call s:Mess('Error', msg)
+  endfor
+endfunction
+
+
 function! s:ZipBrowsePS(zipfile)
   " Browse the contents of a zip file using PowerShell's
   " System.IO.Compression.ZipFile class.
@@ -141,11 +173,6 @@ fun! zip#Browse(zipfile)
   let dict = s:SetSaneOpts()
   defer s:RestoreOpts(dict)
 
-  " sanity checks
-  if !executable(g:zip_unzipcmd) && &shell !~ 'pwsh'
-   call s:Mess('Error', "***error*** (zip#Browse) unzip not available on your system")
-   return
-  endif
   if !filereadable(a:zipfile)
    if a:zipfile !~# '^\a\+://'
     " if it's an url, don't complain, let url-handlers such as vim do its thing
@@ -177,12 +204,13 @@ fun! zip#Browse(zipfile)
  \                '" Select a file with cursor and press ENTER'])
   keepj $
 
+  let gnu_cmd = $"keepj sil r! {g:zip_unzipcmd} -Z1 -- {s:Escape(a:zipfile, 1)}"
   if &shell =~ 'pwsh'
-    let cmd = s:ZipBrowsePS(a:zipfile)
+    let ps_cmd = $"keepj sil r! {s:ZipBrowsePS(a:zipfile)}"
+    call s:TryExecGnuFallBackToPs(g:zip_unzipcmd, gnu_cmd, ps_cmd)
   else
-    let cmd = $"{g:zip_unzipcmd} -Z1 -- {s:Escape(a:zipfile, 1)}"
+    call s:TryExecGnuFallBackToPs(g:zip_unzipcmd, gnu_cmd)
   endif
-  exe "keepj sil r! " . cmd
 
   if v:shell_error != 0
    call s:Mess('WarningMsg', "***warning*** (zip#Browse) ".fnameescape(a:zipfile)." is not a zip file")
