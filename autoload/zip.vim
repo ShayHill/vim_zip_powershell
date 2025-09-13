@@ -95,7 +95,7 @@ function! s:TryExecGnuFallBackToPs(executable, gnu_func_call, ...)
   " Check that a gnu executable is available, run the gnu_func_call if so. If
   " the gnu executable is not available or if gnu_func_call fails, try
   " ps_func_call if &shell =~ 'pwsh'. If all attempts fail, print errors.
-  " a:executable - one of (g:zip_zipcmd, g:zip_unzipcmd)
+  " a:executable - one of (g:zip_zipcmd, g:zip_unzipcmd, g:zip_extractcmd)
   " a:gnu_func_call - (string) a gnu function call to execute
   " a:1 - (optional string) a PowerShell function call to execute.
   let l:failures = []
@@ -110,12 +110,12 @@ function! s:TryExecGnuFallBackToPs(executable, gnu_func_call, ...)
     call add(l:failures, a:executable.' not available on your system')
   endif
   if a:0 == 1
-    try
+    " try
       exe a:1
       return
-    catch
-      call add(l:failures, 'Fallback to PowerShell attempted but failed')
-    endtry
+    " catch
+    "   call add(l:failures, 'Fallback to PowerShell attempted but failed')
+    " endtry
   endif
   for msg in l:failures
     call s:Mess('Error', msg)
@@ -125,7 +125,6 @@ endfunction
 
 function! s:ZipBrowsePS(zipfile)
   " Browse the contents of a zip file using PowerShell's
-  " System.IO.Compression.ZipFile class.
   " Equivalent `unzip -Z1 -- zipfile`
   let cmds = [
         \ '$zip = [System.IO.Compression.ZipFile]::OpenRead(' . s:Escape(a:zipfile, 1) . ');',
@@ -140,21 +139,38 @@ function! s:ZipReadPS(zipfile, fname, tempfile)
   " Equivalent to `unzip -p -- zipfile fname > tempfile`
   let cmds = [
         \ '$zip = [System.IO.Compression.ZipFile]::OpenRead(' . s:Escape(a:zipfile, 1) . ');',
-        \ '$entry = $zip.Entries | Where-Object { $_.FullName -eq ' . s:Escape(a:fname, 1) . ' };',
-        \ '$stream = $entry.Open();',
-        \ '$fs = [System.IO.File]::Create(' . s:Escape(a:tempfile, 1) . ');',
-        \ '$stream.CopyTo($fs);',
-        \ '$fs.Close(); $stream.Close(); $zip.Dispose()'
+        \ '$fileEntry = $zip.Entries | Where-Object { $_.FullName -eq ' . s:Escape(a:fname, 1) . ' };',
+        \ '$stream = $fileEntry.Open();',
+        \ '$fileStream = [System.IO.File]::Create(' . s:Escape(a:tempfile, 1) . ');',
+        \ '$stream.CopyTo($fileStream);',
+        \ '$fileStream.Close();',
+        \ '$stream.Close();',
+        \ '$zip.Dispose()'
         \ ]
   return 'pwsh -Command ' . s:Escape(join(cmds, ' '), 1)
 endfunction
 
 function! s:ZipUpdatePS(zipfile, fname)
-  " Read a filename within a zipped file to a temporary file.
+  " Update a filename within a zipped file
   " Equivalent to `zip -u zipfile fname`
   return 'Compress-Archive -Path ' . a:fname . ' -Update -DestinationPath ' . a:zipfile
 endfunction
 
+function! s:ExtractFilePS(zipfile, fname)
+  " Extract a single file from an archive
+  " Equivalent to `unzip -o zipfile fname`
+  let cmds = [
+        \ '$zip = [System.IO.Compression.ZipFile]::OpenRead(' . s:Escape(a:zipfile, 1) . ');',
+        \ '$fileEntry = $zip.Entries | Where-Object { $_.FullName -eq ' . a:fname . ' };',
+        \ '$stream = $fileEntry.Open();',
+        \ '$fileStream = [System.IO.File]::Create(' . a:fname . ');',
+        \ '$stream.CopyTo($fileStream);',
+        \ '$fileStream.Close();',
+        \ '$stream.Close();',
+        \ '$zip.Dispose()'
+        \ ]
+  return 'pwsh -NoProfile -Command ' . s:Escape(join(cmds, ' '), 1)
+endfunction
 
 " ----------------
 "  Functions: {{{1
@@ -455,7 +471,16 @@ fun! zip#Extract()
   endif
 
   " extract the file mentioned under the cursor
-  call system($"{g:zip_extractcmd} -o {shellescape(b:zipfile)} {target}")
+  let gnu_cmd = $"{g:zip_extractcmd} -o {s:Escape(b:zipfile, 1)} {target}"
+  let gnu_cmd = $"call system({s:Escape(gnu_cmd, 1)})"
+  if &shell =~ 'pwsh'
+    let ps_cmd = $"call system({s:Escape(s:ExtractFilePS(b:zipfile, target), 1)})"
+    call s:TryExecGnuFallBackToPs(g:zip_extractcmd, gnu_cmd, ps_cmd)
+    redraw!
+  else
+    call s:TryExecGnuFallBackToPs(g:zip_extractcmd, gnu_cmd)
+  endif
+
   if v:shell_error != 0
     call s:Mess('Error', "***error*** ".g:zip_extractcmd." ".b:zipfile." ".fname.": failed!")
   elseif !filereadable(fname)
