@@ -131,7 +131,7 @@ function! s:ZipBrowsePS(zipfile)
         \ '$zip.Entries | ForEach-Object { $_.FullName };',
         \ '$zip.Dispose()'
         \ ]
-  return 'pwsh -Command ' . s:Escape(join(cmds, ' '), 1)
+  return 'pwsh -NoProfile -Command ' . s:Escape(join(cmds, ' '), 1)
 endfunction
 
 function! s:ZipReadPS(zipfile, fname, tempfile)
@@ -147,7 +147,7 @@ function! s:ZipReadPS(zipfile, fname, tempfile)
         \ '$stream.Close();',
         \ '$zip.Dispose()'
         \ ]
-  return 'pwsh -Command ' . s:Escape(join(cmds, ' '), 1)
+  return 'pwsh -NoProfile -Command ' . s:Escape(join(cmds, ' '), 1)
 endfunction
 
 function! s:ZipUpdatePS(zipfile, fname)

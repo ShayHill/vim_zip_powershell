@@ -1,3 +1,5 @@
 *
-!zip.vim
+!autoload
+autoload/*
+!autoload/zip.vim
 !.gitignore
