@@ -280,11 +280,6 @@ fun! zip#Read(fname,mode)
    let fname   = substitute(a:fname,'^.\{-}zipfile://.\{-}::\([^\\].*\)$','\1','')
   endif
   let fname    = fname->substitute('[', '[[]', 'g')->escape('?*\\')
-  " sanity check
-  if !executable(substitute(g:zip_unzipcmd,'\s\+.*$','','')) && &shell !~ 'pwsh'
-   call s:Mess('Error', "***error*** (zip#Read) sorry, your system doesn't appear to have the ".g:zip_unzipcmd." program")
-   return
-  endif
 
   " the following code does much the same thing as
   "   exe "keepj sil! r! ".g:zip_unzipcmd." -p -- ".s:Escape(zipfile,1)." ".s:Escape(fname,1)
@@ -292,12 +287,13 @@ fun! zip#Read(fname,mode)
   let temp = tempname()
   let fn   = expand('%:p')
 
+  let gnu_cmd = 'sil !' . g:zip_unzipcmd . ' -p -- ' . s:Escape(zipfile, 1) . ' ' . s:Escape(fname, 1) . ' > ' . s:Escape(temp, 1)
   if &shell =~ 'pwsh'
-    let cmd = s:ZipReadPS(zipfile, fname, temp)
+    let ps_cmd = 'sil !' . s:ZipReadPS(zipfile, fname, temp)
+    call s:TryExecGnuFallBackToPs(g:zip_unzipcmd, gnu_cmd, ps_cmd)
   else
-    let cmd = g:zip_unzipcmd . " -p -- " . s:Escape(zipfile, 1) . " " . s:Escape(fname, 1) . ' > ' . s:Escape(temp, 1)
+    call s:TryExecGnuFallBackToPs(g:zip_unzipcmd, gnu_cmd)
   endif
-  exe "sil !" . cmd
 
   sil exe 'keepalt file '.temp
   sil keepj e!
