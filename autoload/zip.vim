@@ -107,7 +107,7 @@ function! s:TryExecGnuFallBackToPs(executable, gnu_func_call, ...)
       call add(l:failures, 'Failed to execute '.a:gnu_func_call)
     endtry
   else
-      call add(l:failures, a:executable.' not available on your system')
+    call add(l:failures, a:executable.' not available on your system')
   endif
   if a:0 == 1
     try
@@ -314,12 +314,6 @@ fun! zip#Write(fname)
   let need_rename = 0
   defer s:RestoreOpts(dict)
 
-  " sanity checks
-  if !executable(substitute(g:zip_zipcmd,'\s\+.*$','','')) && &shell !~ 'pwsh'
-    call s:Mess('Error', "***error*** (zip#Write) sorry, your system doesn't appear to have the ".g:zip_zipcmd." program")
-    return
-  endif
-
   let curdir= getcwd()
   let tmpdir= tempname()
   if tmpdir =~ '\.'
@@ -375,15 +369,20 @@ fun! zip#Write(fname)
 
   let cmd_zipfile = s:Escape(fnamemodify(zipfile, ":p"), 0)
   let cmd_fname   = s:Escape(fname, 0)
+
+  let cmd = $"{g:zip_zipcmd} -u {cmd_zipfile} {cmd_fname}"
+  let gnu_cmd = $"call system({s:Escape(cmd, 1)})"
   if &shell =~ 'pwsh'
-    call system(s:ZipUpdatePS(cmd_zipfile, cmd_fname))
+    let ps_cmd = $"call system({s:Escape(s:ZipUpdatePS(cmd_zipfile, cmd_fname), 1)})"
+    call s:TryExecGnuFallBackToPs(g:zip_unzipcmd, gnu_cmd, ps_cmd)
     " Vim flashes 'creation in progress ...' from what I believe is the
     " ProgressAction stream of PowerShell. Unfortunately, this cannot be
     " suppressed (as of 250824) due to an open PowerShell issue.
     " https://github.com/PowerShell/PowerShell/issues/21074
-    reload!
+    " This necessitates a redraw of the buffer.
+    redraw!
   else
-    call system(g:zip_zipcmd." -u ".cmd_zipfile." ".cmd_fname)
+    call s:TryExecGnuFallBackToPs(g:zip_unzipcmd, gnu_cmd)
   endif
 
   if v:shell_error != 0
