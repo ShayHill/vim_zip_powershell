@@ -110,12 +110,12 @@ function! s:TryExecGnuFallBackToPs(executable, gnu_func_call, ...)
     call add(l:failures, a:executable.' not available on your system')
   endif
   if a:0 == 1
-    " try
+    try
       exe a:1
       return
-    " catch
-    "   call add(l:failures, 'Fallback to PowerShell attempted but failed')
-    " endtry
+    catch
+      call add(l:failures, 'Fallback to PowerShell attempted but failed')
+    endtry
   endif
   for msg in l:failures
     call s:Mess('Error', msg)
@@ -156,7 +156,7 @@ function! s:ZipUpdatePS(zipfile, fname)
   return 'Compress-Archive -Path ' . a:fname . ' -Update -DestinationPath ' . a:zipfile
 endfunction
 
-function! s:ExtractFilePS(zipfile, fname)
+function! s:ZipExtractFilePS(zipfile, fname)
   " Extract a single file from an archive
   " Equivalent to `unzip -o zipfile fname`
   let cmds = [
@@ -168,6 +168,19 @@ function! s:ExtractFilePS(zipfile, fname)
         \ '$fileStream.Close();',
         \ '$stream.Close();',
         \ '$zip.Dispose()'
+        \ ]
+  return 'pwsh -NoProfile -Command ' . s:Escape(join(cmds, ' '), 1)
+endfunction
+
+function! s:ZipDeleteFilePS(zipfile, fname)
+  " Delete a single file from an archive
+  " Equivalent to `zip -d zipfile fname`
+  let cmds = [
+        \ 'Add-Type -AssemblyName System.IO.Compression.FileSystem;',
+        \ '$zip = [System.IO.Compression.ZipFile]::Open(' . s:Escape(a:zipfile, 1) . ', ''Update'');',
+        \ '$entry = $zip.Entries | Where-Object { $_.Name -eq ' . s:Escape(a:fname, 1) . ' };',
+        \ 'if ($entry) { $entry.Delete(); $zip.Dispose() }',
+        \ 'else { $zip.Dispose() }'
         \ ]
   return 'pwsh -NoProfile -Command ' . s:Escape(join(cmds, ' '), 1)
 endfunction
@@ -357,7 +370,14 @@ fun! zip#Write(fname)
     let fname   = substitute(a:fname,'^.\{-}zipfile://.\{-}::\([^\\].*\)$','\1','')
   endif
   if fname =~ '^[.]\{1,2}/'
-    call system(g:zip_zipcmd." -d ".s:Escape(fnamemodify(zipfile,":p"),0)." ".s:Escape(fname,0))
+    let gnu_cmd = g:zip_zipcmd." -d ".s:Escape(fnamemodify(zipfile,":p"),0)." ".s:Escape(fname,0)
+    let gnu_cmd = $'call system({s:Escape(gnu_cmd, 1)})'
+    if &shell =~ 'pwsh'
+      let ps_cmd = $"call system({s:Escape(s:ZipDeleteFilePS(zipfile, fname), 1)})"
+      call s:TryExecGnuFallBackToPs(g:zip_zipcmd, gnu_cmd, ps_cmd)
+    else
+      call s:TryExecGnuFallBackToPs(g:zip_zipcmd, gnu_cmd)
+    endif
     let fname = fname->substitute('^\([.]\{1,2}/\)\+', '', 'g')
     let need_rename = 1
   endif
@@ -386,11 +406,11 @@ fun! zip#Write(fname)
   let cmd_zipfile = s:Escape(fnamemodify(zipfile, ":p"), 0)
   let cmd_fname   = s:Escape(fname, 0)
 
-  let cmd = $"{g:zip_zipcmd} -u {cmd_zipfile} {cmd_fname}"
-  let gnu_cmd = $"call system({s:Escape(cmd, 1)})"
+  let gnu_cmd = $"{g:zip_zipcmd} -u {cmd_zipfile} {cmd_fname}"
+  let gnu_cmd = $"call system({s:Escape(gnu_cmd, 1)})"
   if &shell =~ 'pwsh'
     let ps_cmd = $"call system({s:Escape(s:ZipUpdatePS(cmd_zipfile, cmd_fname), 1)})"
-    call s:TryExecGnuFallBackToPs(g:zip_unzipcmd, gnu_cmd, ps_cmd)
+    call s:TryExecGnuFallBackToPs(g:zip_zipcmd, gnu_cmd, ps_cmd)
     " Vim flashes 'creation in progress ...' from what I believe is the
     " ProgressAction stream of PowerShell. Unfortunately, this cannot be
     " suppressed (as of 250824) due to an open PowerShell issue.
@@ -398,7 +418,7 @@ fun! zip#Write(fname)
     " This necessitates a redraw of the buffer.
     redraw!
   else
-    call s:TryExecGnuFallBackToPs(g:zip_unzipcmd, gnu_cmd)
+    call s:TryExecGnuFallBackToPs(g:zip_zipcmd, gnu_cmd)
   endif
 
   if v:shell_error != 0
@@ -474,9 +494,8 @@ fun! zip#Extract()
   let gnu_cmd = $"{g:zip_extractcmd} -o {s:Escape(b:zipfile, 1)} {target}"
   let gnu_cmd = $"call system({s:Escape(gnu_cmd, 1)})"
   if &shell =~ 'pwsh'
-    let ps_cmd = $"call system({s:Escape(s:ExtractFilePS(b:zipfile, target), 1)})"
+    let ps_cmd = $"call system({s:Escape(s:ZipExtractFilePS(b:zipfile, target), 1)})"
     call s:TryExecGnuFallBackToPs(g:zip_extractcmd, gnu_cmd, ps_cmd)
-    redraw!
   else
     call s:TryExecGnuFallBackToPs(g:zip_extractcmd, gnu_cmd)
   endif
